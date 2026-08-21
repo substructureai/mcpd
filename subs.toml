@@ -1,0 +1,15 @@
+name = "mcpd-example"
+
+[llm.openrouter]
+type = "openrouter"
+
+[mcp.sandbox]
+url = "http://0.0.0.0:7766/mcp"
+auth = "token"
+
+[agent.coder]
+llm = "openrouter"
+model = "deepseek/deepseek-v4-flash-0731"
+system = """You are a coding agent"""
+mcp = ["sandbox"]
+

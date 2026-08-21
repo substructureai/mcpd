@@ -1,0 +1,19 @@
+bind = "0.0.0.0:8080"
+name = "mcpd"
+
+[[tool]]
+name = "bash"
+description = "Run a bash command. Returns combined stdout and stderr."
+
+[tool.inputSchema]
+type = "object"
+required = ["command"]
+
+[tool.inputSchema.properties.command]
+type = "string"
+description = "The command to run."
+
+[tool._meta."dev.subs/exec"]
+argv = ["/bin/bash", "-lc", "{command}"]
+timeoutMs = 120000
+maxOutputBytes = 50000

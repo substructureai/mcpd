@@ -1,0 +1,104 @@
+{
+  "bind": "0.0.0.0:8080",
+  "name": "mcpd-readonly",
+  "instructions": "These tools can read the checkout but not change it. There is no shell.",
+  "tool": [
+    {
+      "name": "list",
+      "description": "List a directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "default": "."
+          }
+        }
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/bin/ls",
+            "-la",
+            "--",
+            "{path}"
+          ],
+          "timeoutMs": 10000
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read a file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/bin/cat",
+            "--",
+            "{path}"
+          ],
+          "timeoutMs": 10000,
+          "maxOutputBytes": 100000
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search file contents with ripgrep.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "default": [
+              "."
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "rg",
+            "--line-number",
+            "--no-heading",
+            "--",
+            "{pattern}",
+            "{paths}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 30000
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "name": "mcpd-codex",
+  "instructions": "You are running as a coding agent on a user's computer.\n\n## General\n\n- When searching for text or files, prefer `rg` or `rg --files` because ripgrep is much faster than alternatives like grep. If `rg` is not found, use alternatives.\n- Each call runs in its own process. Nothing persists between calls, so `cd` and exported variables are forgotten; pass `workdir` instead.\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce Unicode when there is a clear justification and the file already uses it.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. Usage of these comments should be rare.\n- Use `apply_patch` for single file edits. Do not use it for changes that are auto-generated, or when scripting is more efficient, such as search and replacing a string across a codebase.\n- You may be in a dirty git worktree. NEVER revert existing changes you did not make unless explicitly requested. If the changes are unrelated to your work, ignore them.\n- Do not amend a commit unless explicitly requested.\n- NEVER use destructive commands like `git reset --hard` or `git checkout --` unless specifically requested or approved.\n- Do not waste tokens by re-reading files after calling `apply_patch` on them. The tool call will fail if it did not work.\n",
+  "tool": [
+    {
+      "name": "shell",
+      "description": "Runs a shell command and returns its combined output.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "array",
+            "description": "The command to run, as an argv array. It is executed directly, not through a shell, so redirection and pipes require an explicit shell such as [\"bash\", \"-lc\", \"...\"].",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "workdir": {
+            "type": "string",
+            "description": "Working directory for the command. Defaults to the turn cwd.",
+            "default": "."
+          }
+        }
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "{command}"
+          ],
+          "cwd": "{workdir}",
+          "timeoutMs": 120000,
+          "maxOutputBytes": 50000
+        }
+      }
+    },
+    {
+      "name": "apply_patch",
+      "description": "Edits files using a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply.\n\nA patch is an envelope containing one or more file sections:\n\n*** Begin Patch\n[ one or more file sections ]\n*** End Patch\n\nYou MUST include a header to specify the action you are taking. Each operation starts with one of three headers:\n\n*** Add File: <path> - create a new file. Every following line is a + line.\n*** Delete File: <path> - remove an existing file. Nothing follows.\n*** Update File: <path> - patch an existing file in place, optionally followed by *** Move to: <new path> to rename it.\n\nAn update contains one or more hunks introduced by @@, and each line within a hunk starts with \" \", \"-\" or \"+\". Show 3 lines of context above and below each change. If 3 lines is not enough to identify the snippet uniquely, use @@ to name the enclosing class or function, and repeat @@ to narrow further.\n\nYou must prefix new lines with + even when creating a file. File references can only be relative, NEVER ABSOLUTE.\n\n*** Begin Patch\n*** Add File: hello.txt\n+Hello world\n*** Update File: src/app.py\n*** Move to: src/main.py\n@@ def greet():\n-print(\"Hi\")\n+print(\"Hello, world!\")\n*** Delete File: obsolete.txt\n*** End Patch\n",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "input"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "The patch text, beginning with *** Begin Patch and ending with *** End Patch."
+          }
+        }
+      },
+      "annotations": {
+        "destructiveHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "apply_patch",
+            "{input}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 20000
+        }
+      }
+    }
+  ]
+}

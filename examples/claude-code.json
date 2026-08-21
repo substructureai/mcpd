@@ -1,0 +1,260 @@
+{
+  "name": "mcpd-claude-code",
+  "instructions": "You are an interactive agent that helps users with software engineering tasks.\n\n## Tone and style\n\n- Be concise and direct. Answer in as few lines as is consistent with being useful.\n- Do not add preamble or postamble unless the user asks for it.\n- Reference code as `file_path:line_number` so the user can click through to it.\n\n## Doing the work\n\n- Use Grep and Glob to find things rather than shelling out to `find` or `grep`; they are faster and respect ignore files.\n- Read a file before editing it. Edit fails if `old_string` does not appear exactly once, which is deliberate: widen the surrounding context until it is unique rather than guessing.\n- Prefer Edit over Write for existing files. Write replaces the whole file.\n- Each Bash call runs in its own process. Nothing persists between calls, so `cd` and exported variables are forgotten; use absolute paths.\n- Do not commit unless the user asks. Never use destructive commands like `git reset --hard` without explicit approval.\n- Write code that reads like the code around it: match its naming, its idiom, and its comment density.\n",
+  "tool": [
+    {
+      "name": "Bash",
+      "description": "Executes a bash command and returns its combined stdout and stderr. Working directory does not persist between calls, so prefer absolute paths.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The command to execute."
+          },
+          "description": {
+            "type": "string",
+            "description": "Clear, concise description of what this command does in 5-10 words, in active voice."
+          }
+        }
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/bin/bash",
+            "-lc",
+            "{command}"
+          ],
+          "timeoutMs": 120000,
+          "maxOutputBytes": 50000
+        }
+      }
+    },
+    {
+      "name": "Read",
+      "description": "Reads a file from the local filesystem. Results are returned with line numbers, starting at 1. Reads up to 2000 lines by default; use offset and limit for a specific range of a large file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "file_path"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to read."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "The line number to start reading from.",
+            "default": 1,
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "The number of lines to read.",
+            "default": 2000,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/usr/bin/awk",
+            "-v",
+            "s={offset}",
+            "-v",
+            "n={limit}",
+            "NR >= s && NR < s + n { printf \"%6d\\t%s\\n\", NR, $0 }",
+            "{file_path}"
+          ],
+          "timeoutMs": 15000,
+          "maxOutputBytes": 100000
+        }
+      }
+    },
+    {
+      "name": "Write",
+      "description": "Writes a file to the local filesystem, overwriting it if it exists. Prefer Edit for changing part of an existing file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "file_path",
+          "content"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to write."
+          },
+          "content": {
+            "type": "string",
+            "description": "The content to write to the file."
+          }
+        }
+      },
+      "annotations": {
+        "destructiveHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/bin/dd",
+            "of={file_path}",
+            "status=none"
+          ],
+          "stdin": "{content}",
+          "timeoutMs": 15000,
+          "maxOutputBytes": 1000
+        }
+      }
+    },
+    {
+      "name": "Edit",
+      "description": "Performs exact string replacement in a file. The edit fails unless old_string appears exactly once, so include enough surrounding context to make it unique, or pass replace_all.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "file_path",
+          "old_string",
+          "new_string"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to modify."
+          },
+          "old_string": {
+            "type": "string",
+            "description": "The text to replace. Must match the file exactly, including indentation."
+          },
+          "new_string": {
+            "type": "string",
+            "description": "The text to replace it with. Must differ from old_string."
+          },
+          "replace_all": {
+            "type": "boolean",
+            "description": "Replace every occurrence instead of requiring exactly one.",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "destructiveHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/usr/bin/perl",
+            "-e",
+            "($o, $n, $all, $f) = @ARGV;\nopen(my $in, \"<\", $f) or die \"cannot read $f: $!\\n\";\nlocal $/; my $s = <$in>; close $in;\nmy $c = () = $s =~ /\\Q$o\\E/g;\ndie \"old_string not found in $f\\n\" if $c == 0;\ndie \"old_string is not unique in $f ($c matches); add context or pass replace_all\\n\"\n  if $c > 1 && $all ne \"true\";\nif ($all eq \"true\") { $s =~ s/\\Q$o\\E/$n/g } else { $s =~ s/\\Q$o\\E/$n/ }\nopen(my $out, \">\", $f) or die \"cannot write $f: $!\\n\";\nprint $out $s; close $out;\nprint \"edited $f ($c replacement\", ($c == 1 ? \"\" : \"s\"), \")\\n\";\n",
+            "{old_string}",
+            "{new_string}",
+            "{replace_all}",
+            "{file_path}"
+          ],
+          "timeoutMs": 15000,
+          "maxOutputBytes": 4000
+        }
+      }
+    },
+    {
+      "name": "Glob",
+      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching paths sorted by modification time, newest first.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The glob pattern to match files against."
+          },
+          "path": {
+            "type": "string",
+            "description": "The directory to search in.",
+            "default": "."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "rg",
+            "--files",
+            "--sortr=modified",
+            "--glob",
+            "{pattern}",
+            "--",
+            "{path}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 30000
+        }
+      }
+    },
+    {
+      "name": "Grep",
+      "description": "Search file contents with ripgrep. Output is line-numbered and case-insensitive when the pattern is all lowercase. Filter which files are searched with glob, and widen the surrounding lines with -C.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The regular expression to search for."
+          },
+          "path": {
+            "type": "string",
+            "description": "File or directory to search in.",
+            "default": "."
+          },
+          "glob": {
+            "type": "string",
+            "description": "Glob limiting which files are searched, such as \"*.rs\".",
+            "default": "**"
+          },
+          "-C": {
+            "type": "integer",
+            "description": "Lines of context to show before and after each match.",
+            "default": 0,
+            "minimum": 0
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "rg",
+            "--line-number",
+            "--smart-case",
+            "--glob",
+            "{glob}",
+            "--context",
+            "{-C}",
+            "--",
+            "{pattern}",
+            "{path}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 30000
+        }
+      }
+    }
+  ]
+}
