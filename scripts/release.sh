@@ -62,26 +62,35 @@ if git rev-parse "$TAG" > /dev/null 2>&1; then
   exit 1
 fi
 
-echo "Bumping $CURRENT -> $VERSION"
-
 # shellcheck disable=SC2064
 trap "echo >&2; echo 'Release aborted with a partial bump in the tree. Undo with:' >&2; echo '  git checkout -- Cargo.toml Cargo.lock' >&2" ERR
 
-# The [package] version only — the workflow refuses to build a tag that
-# disagrees with it, and `env!("CARGO_PKG_VERSION")` is what `mcpd --version`
-# reports.
-awk -v v="$VERSION" '
-  /^\[/ { section = $0 }
-  section == "[package]" && /^version = / { sub(/"[^"]*"/, "\"" v "\"") }
-  { print }
-' Cargo.toml > Cargo.toml.tmp
-mv Cargo.toml.tmp Cargo.toml
+if [ "$CURRENT" = "$VERSION" ]; then
+  # The first release of a version the crate already carries: nothing to bump,
+  # the tag is the whole release.
+  echo "Already at $VERSION — tagging the tree as it stands"
+else
+  echo "Bumping $CURRENT -> $VERSION"
+  # The [package] version only — the workflow refuses to build a tag that
+  # disagrees with it, and `env!("CARGO_PKG_VERSION")` is what `mcpd --version`
+  # reports.
+  awk -v v="$VERSION" '
+    /^\[/ { section = $0 }
+    section == "[package]" && /^version = / { sub(/"[^"]*"/, "\"" v "\"") }
+    { print }
+  ' Cargo.toml > Cargo.toml.tmp
+  mv Cargo.toml.tmp Cargo.toml
+fi
 
 echo "Running tests"
 cargo test --all # also refreshes Cargo.lock with the new version
 
 git add Cargo.toml Cargo.lock
-git commit -m "release $TAG"
+if git diff --cached --quiet; then
+  echo "No version change to commit; tagging HEAD"
+else
+  git commit -m "release $TAG"
+fi
 git tag -a "$TAG" -m "$TAG"
 trap - ERR
 
