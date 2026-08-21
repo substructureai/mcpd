@@ -8,6 +8,12 @@ Pairs well with our [cloud harness](https://github.com/substructureai/substructu
 
 Execute tools inside your sandbox without running your harness inside the sandbox.
 
+## Install
+
+```sh
+curl -fsSL https://subs.dev/mcpd.sh | bash
+```
+
 ## Quick start
 
 Start an MCP server with a single bash tool:
@@ -31,5 +37,12 @@ mcpd --tool '{
 --bind "0.0.0.0:8080"
 ```
 
-
 See [examples/README.md](examples/README.md)
+
+## Releasing
+
+Bump `version` in `Cargo.toml`
+
+```sh
+git commit -am "release 0.1.0" && git tag v0.1.0 && git push origin main --tags
+```
