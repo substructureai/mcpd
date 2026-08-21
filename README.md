@@ -38,11 +38,3 @@ mcpd --tool '{
 ```
 
 See [examples/README.md](examples/README.md)
-
-## Releasing
-
-Bump `version` in `Cargo.toml`
-
-```sh
-git commit -am "release 0.1.0" && git tag v0.1.0 && git push origin main --tags
-```
