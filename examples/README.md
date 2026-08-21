@@ -12,6 +12,7 @@ you can move one between the two by copying it.
 | --- | --- |
 | `codex.json` | Codex's toolset: `shell` and `apply_patch` |
 | `claude-code.json` | Claude Code's toolset: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep` |
+| `code-search.json` | The navigation half of that toolset: `Read`, `Glob`, `Grep`, `List` |
 | `readonly.json` | No shell at all — only read-only commands |
 | `minimal.toml` | The smallest useful server, and the TOML form |
 
@@ -36,6 +37,17 @@ shell, and the `apply_patch` description is adapted from that repository's
 patch-format documentation. The instructions are condensed from its system
 prompt. `apply_patch` expects the `apply_patch` binary on `PATH`; without it
 the tool reports a spawn failure and the other tools still work.
+
+`code-search.json` is `claude-code.json` with everything that writes or spawns
+a shell removed: `Read`, `Glob` and `Grep` are copied across unchanged, so an
+agent already trained on those names and parameters works against it without
+being told anything. `List` is not from either stack; it is here because
+without a shell there is otherwise no way to see a directory, and `Glob` hides
+whatever the ignore files hide.
+
+Codex contributes nothing to this one. Its stack has no dedicated reading or
+searching tool — `shell` does that work — so the read-only subset of the two
+stacks is Claude Code's three tools.
 
 `claude-code.json` follows Claude Code's tool names and parameter names —
 `file_path`, `old_string`/`new_string`/`replace_all`, `offset`/`limit`,
@@ -88,3 +100,11 @@ call is rejected rather than executed.
 anything: the machine it sits on is the boundary. Run it inside a container or
 a VM you are willing to hand to a model, and let the tool list be the only
 thing that decides what is reachable.
+
+`code-search.json` is the one config here that does not lean on that. Every
+tool names an absolute binary or `rg`, none of them writes, and each one is a
+single command whose user-supplied values land after `--` or are consumed as
+the argument to a flag — so a `pattern` of `--files` is searched for rather
+than obeyed. That is a narrow claim about these four definitions, not about
+`mcpd`: it holds because the tools are fixed commands, and it stops holding
+the moment one of them is a shell.

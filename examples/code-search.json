@@ -1,0 +1,173 @@
+{
+  "name": "mcpd-code-search",
+  "instructions": "You can read and search this checkout. You cannot change it, and there is no shell.\n\n- Use Grep and Glob to find things rather than guessing at paths; they respect ignore files.\n- Grep is case-insensitive when the pattern is all lowercase. Narrow with `glob`, widen with `-C`.\n- Read returns line-numbered output. Use `offset` and `limit` to page through a large file rather than reading it whole.\n- Reference code as `file_path:line_number`.\n- There is no tool that writes, moves, or deletes anything. If a task needs an edit, say what the edit should be and where it goes.\n",
+  "tool": [
+    {
+      "name": "Read",
+      "description": "Reads a file from the local filesystem. Results are returned with line numbers, starting at 1. Reads up to 2000 lines by default; use offset and limit for a specific range of a large file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "file_path"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to read."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "The line number to start reading from.",
+            "default": 1,
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "The number of lines to read.",
+            "default": 2000,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/usr/bin/awk",
+            "-v",
+            "s={offset}",
+            "-v",
+            "n={limit}",
+            "NR >= s && NR < s + n { printf \"%6d\\t%s\\n\", NR, $0 }",
+            "{file_path}"
+          ],
+          "timeoutMs": 15000,
+          "maxOutputBytes": 100000
+        }
+      }
+    },
+    {
+      "name": "Glob",
+      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching paths sorted by modification time, newest first.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The glob pattern to match files against."
+          },
+          "path": {
+            "type": "string",
+            "description": "The directory to search in.",
+            "default": "."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "rg",
+            "--files",
+            "--sortr=modified",
+            "--glob",
+            "{pattern}",
+            "--",
+            "{path}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 30000
+        }
+      }
+    },
+    {
+      "name": "Grep",
+      "description": "Search file contents with ripgrep. Output is line-numbered and case-insensitive when the pattern is all lowercase. Filter which files are searched with glob, and widen the surrounding lines with -C.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The regular expression to search for."
+          },
+          "path": {
+            "type": "string",
+            "description": "File or directory to search in.",
+            "default": "."
+          },
+          "glob": {
+            "type": "string",
+            "description": "Glob limiting which files are searched, such as \"*.rs\".",
+            "default": "**"
+          },
+          "-C": {
+            "type": "integer",
+            "description": "Lines of context to show before and after each match.",
+            "default": 0,
+            "minimum": 0
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "rg",
+            "--line-number",
+            "--smart-case",
+            "--glob",
+            "{glob}",
+            "--context",
+            "{-C}",
+            "--",
+            "{pattern}",
+            "{path}"
+          ],
+          "timeoutMs": 30000,
+          "maxOutputBytes": 30000
+        }
+      }
+    },
+    {
+      "name": "List",
+      "description": "List a directory. Shows sizes, modification times and entries that Glob's ignore rules would hide.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The directory to list.",
+            "default": "."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.subs/exec": {
+          "argv": [
+            "/bin/ls",
+            "-la",
+            "--",
+            "{path}"
+          ],
+          "timeoutMs": 10000,
+          "maxOutputBytes": 30000
+        }
+      }
+    }
+  ]
+}
