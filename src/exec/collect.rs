@@ -46,15 +46,13 @@ impl Collector {
         self.tail.extend(chunk);
     }
 
-    /// Borrows rather than consumes, so output collected so far survives a
-    /// drain that had to be abandoned.
-    pub fn render(&self) -> (String, bool) {
+    pub fn finish(self) -> (String, bool) {
         let kept = self.head.len() + self.tail.len();
         let elided = self.total - kept;
-        let tail: Vec<u8> = self.tail.iter().copied().collect();
+        let tail: Vec<u8> = self.tail.into_iter().collect();
 
         if elided == 0 {
-            let mut bytes = self.head.clone();
+            let mut bytes = self.head;
             bytes.extend(tail);
             return (String::from_utf8_lossy(&bytes).into_owned(), false);
         }
@@ -62,10 +60,6 @@ impl Collector {
         let head = String::from_utf8_lossy(&self.head);
         let tail = String::from_utf8_lossy(&tail);
         (format!("{head}\n… {elided} bytes elided …\n{tail}"), true)
-    }
-
-    pub fn finish(self) -> (String, bool) {
-        self.render()
     }
 }
 
@@ -112,11 +106,10 @@ mod tests {
         let body: Vec<u8> = std::iter::repeat_n(b'x', 1000).collect();
         let mut c = Collector::new(30);
         c.push(&body);
-        let (text, _) = c.render();
-        let kept: usize = text.matches('x').count();
-        assert_eq!(kept, 30);
         assert_eq!(c.head.len(), 15);
         assert_eq!(c.tail.len(), 15);
+        let (text, _) = c.finish();
+        assert_eq!(text.matches('x').count(), 30);
     }
 
     #[test]
@@ -128,12 +121,11 @@ mod tests {
     }
 
     #[test]
-    fn a_partial_render_does_not_consume_the_collector() {
+    fn writes_accumulate_across_pushes() {
         let mut c = Collector::new(100);
         c.push(b"first");
-        assert_eq!(c.render().0, "first");
         c.push(b" second");
-        assert_eq!(c.render().0, "first second");
+        assert_eq!(c.finish().0, "first second");
     }
 
     #[test]

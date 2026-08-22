@@ -1,4 +1,3 @@
-use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -6,13 +5,14 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-const TOKEN: &str = "integration-token";
-const PROTOCOL: &str = "2026-07-28";
+mod common;
+use common::{PROTOCOL, TOKEN, is_error, sh, text};
 
 struct Daemon {
     child: Child,
     port: u16,
     client: reqwest::Client,
+    logs: TempDir,
 }
 
 impl Daemon {
@@ -33,16 +33,20 @@ impl Daemon {
         Self::launch_with(args, true).await
     }
 
+    /// Binds port 0 and reads back the port the kernel gave it. Choosing one in
+    /// the test and hoping it is still free when the daemon gets there is a race
+    /// every other test in this file can lose.
     async fn launch_with(args: &[String], token: bool) -> Self {
-        let port = free_port();
+        let logs = TempDir::new().expect("log dir");
+        let path = logs.path().join("mcpd.stderr");
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_mcpd"));
         command
             .arg("--bind")
-            .arg(format!("127.0.0.1:{port}"))
+            .arg("127.0.0.1:0")
             .args(args)
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(std::fs::File::create(&path).expect("log file"));
 
         if token {
             command.env("MCPD_TOKEN", TOKEN);
@@ -50,10 +54,14 @@ impl Daemon {
             command.env_remove("MCPD_TOKEN");
         }
 
+        let child = command.spawn().expect("spawn mcpd");
+        let port = await_port(&path, args).await;
+
         let daemon = Self {
-            child: command.spawn().expect("spawn mcpd"),
+            child,
             port,
             client: reqwest::Client::new(),
+            logs,
         };
         daemon.await_health(args).await;
         daemon
@@ -72,7 +80,9 @@ impl Daemon {
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        panic!("mcpd never became healthy with {args:?}");
+        let text =
+            std::fs::read_to_string(self.logs.path().join("mcpd.stderr")).unwrap_or_default();
+        panic!("mcpd never became healthy with {args:?}; logs:\n{text}");
     }
 
     /// Every request carries the 2026-07-28 protocol metadata: the standard
@@ -147,32 +157,23 @@ impl Drop for Daemon {
     }
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind")
-        .local_addr()
-        .expect("addr")
-        .port()
-}
+async fn await_port(logs: &Path, args: &[String]) -> u16 {
+    const MARKER: &str = "endpoint=http://127.0.0.1:";
 
-fn sh(timeout_ms: u64, max_output_bytes: usize) -> String {
-    json!({
-        "name": "sh",
-        "description": "Run a shell command.",
-        "inputSchema": {
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"],
-        },
-        "_meta": {
-            "dev.subs/exec": {
-                "argv": ["/bin/sh", "-lc", "{command}"],
-                "timeoutMs": timeout_ms,
-                "maxOutputBytes": max_output_bytes,
-            },
-        },
-    })
-    .to_string()
+    for _ in 0..200 {
+        let text = std::fs::read_to_string(logs).unwrap_or_default();
+        if let Some(rest) = text.split(MARKER).nth(1)
+            && let Some(port) = rest.split('/').next()
+        {
+            return port
+                .parse()
+                .unwrap_or_else(|e| panic!("port `{port}`: {e}"));
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    let text = std::fs::read_to_string(logs).unwrap_or_default();
+    panic!("mcpd never reported a port with {args:?}; logs:\n{text}");
 }
 
 fn lines() -> String {
@@ -188,17 +189,6 @@ fn lines() -> String {
         },
     })
     .to_string()
-}
-
-fn text(response: &Value) -> String {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap_or_else(|| panic!("no text content in {response}"))
-        .to_string()
-}
-
-fn is_error(response: &Value) -> bool {
-    response["result"]["isError"].as_bool().unwrap_or(false)
 }
 
 async fn shell_daemon(cwd: &Path) -> Daemon {

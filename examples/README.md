@@ -29,6 +29,18 @@ mcpd -c examples/claude-code.json --cwd /path/to/checkout
 For local work where a token is more friction than protection, `--no-auth`
 serves every caller. It has to be typed at launch; a config file cannot set it.
 
+Every config here also works over stdio, where the tool list is the only half
+that applies:
+
+```sh
+mcpd --stdio -c examples/code-search.json --cwd /path/to/checkout
+```
+
+There is no token and no listener in that mode — the client is the process that
+spawned it — so `--bind`, `--mcp-path` and `--no-auth` are refused alongside
+`--stdio`. A `bind` in the file itself is not an error; it is just unused, which
+is why `minimal.toml` can be served either way.
+
 ## Where these came from
 
 `codex.json` follows `openai/codex` (Apache-2.0): the `shell` tool takes its

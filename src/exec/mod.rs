@@ -14,10 +14,6 @@ pub const TIMEOUT_EXIT_CODE: i32 = 124;
 /// Shell convention: a command killed by signal N reports 128 + N.
 pub const SIGNAL_EXIT_CODE_BASE: i32 = 128;
 
-/// Variables a model-reachable command must never inherit. The daemon's own
-/// bearer token is in its environment, and `bash` can read it.
-pub const NON_INHERITABLE_ENV_VARS: &[&str] = &[crate::cli::TOKEN_ENV];
-
 /// Bound on draining output after the command is gone. A grandchild that
 /// escaped the process group can hold the pipe open forever; without this the
 /// request never returns.

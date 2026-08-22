@@ -19,7 +19,6 @@ use crate::transport::auth::Authenticator;
 use crate::transport::handler::McpdHandler;
 
 pub const HEALTH_PATH: &str = "/health";
-pub const DEFAULT_MCP_PATH: &str = "/mcp";
 
 pub fn router(
     auth: Arc<dyn Authenticator>,
@@ -65,31 +64,4 @@ async fn require_bearer(
         Ok(()) => Ok(next.run(request).await),
         Err(_) => Err(StatusCode::UNAUTHORIZED),
     }
-}
-
-pub async fn shutdown_signal(shutdown: CancellationToken) {
-    let interrupt = async {
-        tokio::signal::ctrl_c().await.ok();
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        use tokio::signal::unix::{SignalKind, signal};
-        match signal(SignalKind::terminate()) {
-            Ok(mut s) => {
-                s.recv().await;
-            }
-            Err(e) => tracing::warn!(error = %e, "cannot listen for SIGTERM"),
-        }
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = interrupt => {}
-        _ = terminate => {}
-    }
-    tracing::info!("shutting down");
-    shutdown.cancel();
 }

@@ -16,11 +16,13 @@ impl StaticRegistry {
         let mut listed = Vec::with_capacity(handlers.len());
 
         for handler in handlers {
-            let name = handler.descriptor().name.to_string();
-            listed.push(handler.descriptor().clone());
+            let tool = handler.descriptor().clone();
+            let name = tool.name.to_string();
+
             if by_name.insert(name.clone(), handler).is_some() {
                 return Err(LoadError::Duplicate(name));
             }
+            listed.push(tool);
         }
 
         Ok(Self { by_name, listed })

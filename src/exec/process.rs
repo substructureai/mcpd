@@ -1,35 +1,23 @@
 use std::collections::HashSet;
-use std::io::Read;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::process::{ExitStatus, Stdio};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::unix::pipe::Receiver;
+use tokio::process::{Child, Command};
 
 use crate::exec::collect::Collector;
-use crate::exec::{
-    DRAIN_TIMEOUT, ExecError, ExecOutput, ExecSpec, Executor, Exit, NON_INHERITABLE_ENV_VARS,
-};
+use crate::exec::{DRAIN_TIMEOUT, ExecError, ExecOutput, ExecSpec, Executor, Exit};
 
 pub struct ProcessExecutor {
     live: Mutex<HashSet<i32>>,
     scrubbed: Vec<String>,
 }
 
-impl Default for ProcessExecutor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ProcessExecutor {
-    pub fn new() -> Self {
-        Self::scrubbing(NON_INHERITABLE_ENV_VARS.iter().map(|n| n.to_string()))
-    }
-
     pub fn scrubbing(names: impl IntoIterator<Item = String>) -> Self {
         Self {
             live: Mutex::new(HashSet::new()),
@@ -98,11 +86,14 @@ impl Executor for ProcessExecutor {
             });
         }
 
-        let collector = Arc::new(Mutex::new(Collector::new(spec.max_output_bytes)));
-        let sink = collector.clone();
-        let drain = tokio::task::spawn_blocking(move || read_all(reader, &sink));
+        let mut reader = Receiver::from_owned_fd(reader)?;
+        let mut collector = Collector::new(spec.max_output_bytes);
 
-        let waited = tokio::time::timeout(spec.timeout, child.wait()).await;
+        let waited = tokio::time::timeout(
+            spec.timeout,
+            drain_until_exit(&mut reader, &mut collector, &mut child),
+        )
+        .await;
 
         // Always, not only on timeout: a command that leaves the group alive
         // would otherwise hold the pipe open and hang the read below.
@@ -117,13 +108,16 @@ impl Executor for ProcessExecutor {
             }
         };
 
-        if tokio::time::timeout(DRAIN_TIMEOUT, drain).await.is_err() {
+        if tokio::time::timeout(DRAIN_TIMEOUT, drain_to_end(&mut reader, &mut collector))
+            .await
+            .is_err()
+        {
             tracing::warn!(
                 group,
                 "output drain abandoned; something outlived the process group"
             );
         }
-        let (output, truncated) = collector.lock().expect("collector").render();
+        let (output, truncated) = collector.finish();
 
         let exit = match status {
             None => Exit::TimedOut,
@@ -170,18 +164,37 @@ fn pipe() -> std::io::Result<(OwnedFd, OwnedFd)> {
     unsafe { Ok((OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))) }
 }
 
-/// Reads to end of file even once the collector is full, so the command never
-/// blocks on a pipe nobody is draining.
-fn read_all(reader: OwnedFd, sink: &Mutex<Collector>) {
-    let mut file = std::fs::File::from(reader);
+/// Keeps reading while waiting, since a command that fills the pipe blocks
+/// until someone empties it.
+async fn drain_until_exit(
+    reader: &mut Receiver,
+    collector: &mut Collector,
+    child: &mut Child,
+) -> std::io::Result<ExitStatus> {
+    let mut buffer = [0u8; 8192];
+    let mut open = true;
+    let mut waiting = std::pin::pin!(child.wait());
+
+    loop {
+        tokio::select! {
+            status = &mut waiting => return status,
+            read = reader.read(&mut buffer), if open => match read {
+                Ok(0) => open = false,
+                Ok(n) => collector.push(&buffer[..n]),
+                Err(_) => open = false,
+            },
+        }
+    }
+}
+
+/// What the command wrote before it was reaped, which the kernel still holds.
+async fn drain_to_end(reader: &mut Receiver, collector: &mut Collector) {
     let mut buffer = [0u8; 8192];
 
     loop {
-        match file.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => sink.lock().expect("collector").push(&buffer[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
+        match reader.read(&mut buffer).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => collector.push(&buffer[..n]),
         }
     }
 }
@@ -240,7 +253,7 @@ mod tests {
     }
 
     async fn run(spec: ExecSpec) -> Result<ExecOutput, ExecError> {
-        ProcessExecutor::new().run(spec).await
+        ProcessExecutor::scrubbing([]).run(spec).await
     }
 
     #[tokio::test]

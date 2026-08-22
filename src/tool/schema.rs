@@ -61,12 +61,14 @@ impl InputSchema {
     }
 
     pub fn prepare(&self, arguments: Option<JsonObject>) -> Result<JsonObject, ToolError> {
-        let mut arguments = arguments.unwrap_or_default();
-
-        let document = Value::Object(arguments.clone());
+        let document = Value::Object(arguments.unwrap_or_default());
         self.validator
             .validate(&document)
             .map_err(|e| ToolError::Invalid(e.to_string()))?;
+
+        let Value::Object(mut arguments) = document else {
+            unreachable!("built from an object")
+        };
 
         for (property, default) in &self.defaults {
             if !arguments.contains_key(property) {
