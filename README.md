@@ -21,6 +21,7 @@ Start an MCP server with a single bash tool:
 ```sh
 mcpd --tool '{
   "name": "bash",
+  "title": "Bash",
   "description": "Run a bash command. Returns combined stdout and stderr.",
   "inputSchema": {
     "type": "object",

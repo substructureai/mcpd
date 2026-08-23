@@ -45,6 +45,7 @@ async fn serve() -> Result<()> {
     let transport = settings.transport();
     let Settings {
         name,
+        title,
         cwd,
         tools,
         instructions,
@@ -67,9 +68,14 @@ async fn serve() -> Result<()> {
     let registry = Arc::new(StaticRegistry::new(handlers)?);
     tracing::info!(tools = count, "registered");
 
+    let server_info = match title {
+        Some(title) => Implementation::new(name, VERSION).with_title(title),
+        None => Implementation::new(name, VERSION),
+    };
+
     let handler = McpdHandler {
         registry,
-        server_info: Implementation::new(name, VERSION),
+        server_info,
         instructions,
         list_ttl_ms,
         protocol_versions: match transport {

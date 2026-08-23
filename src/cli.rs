@@ -64,6 +64,13 @@ pub struct Cli {
 
     #[arg(
         long,
+        value_name = "TITLE",
+        help = "Display name reported in serverInfo. Defaults to none, leaving clients the name"
+    )]
+    pub title: Option<String>,
+
+    #[arg(
+        long,
         value_name = "PATH",
         help = "Path the MCP endpoint is served at [default: /mcp]"
     )]
@@ -113,6 +120,8 @@ pub struct Settings {
     bind: String,
     #[serde(default = "default_name")]
     pub name: String,
+    #[serde(default)]
+    pub title: Option<String>,
     #[serde(default = "default_mcp_path")]
     mcp_path: String,
     #[serde(default)]
@@ -355,6 +364,18 @@ mod tests {
         assert_eq!(settings.list_ttl_ms, 60_000);
         assert!(settings.cwd.is_none());
         assert!(settings.instructions.is_none());
+        assert!(settings.title.is_none());
+    }
+
+    #[test]
+    fn a_display_name_comes_from_either_source() {
+        let settings = settled(file(r#"title = "From File""#));
+        assert_eq!(settings.title.as_deref(), Some("From File"));
+
+        let settings = flags(&["--title", "From Flag"])
+            .over(file(r#"title = "From File""#))
+            .unwrap();
+        assert_eq!(settings.title.as_deref(), Some("From Flag"));
     }
 
     #[test]
@@ -399,6 +420,7 @@ mod tests {
             r#"
             bind = "127.0.0.1:1"
             name = "n"
+            title = "N"
             cwd = "/tmp"
             instructions = "i"
             list-ttl-ms = 1
@@ -453,6 +475,8 @@ mod tests {
             "127.0.0.1:1",
             "--name",
             "n",
+            "--title",
+            "N",
             "--mcp-path",
             "/p",
             "--cwd",

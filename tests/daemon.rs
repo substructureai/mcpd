@@ -256,6 +256,7 @@ async fn the_server_advertises_only_the_pinned_protocol_version() {
 
     assert_eq!(response["result"]["protocolVersion"], PROTOCOL);
     assert_eq!(response["result"]["serverInfo"]["name"], "mcpd");
+    assert!(response["result"]["serverInfo"].get("title").is_none());
 }
 
 #[tokio::test]
@@ -613,6 +614,7 @@ async fn a_config_file_configures_the_whole_server() {
             r#"
 bind = "127.0.0.1:1"
 name = "configured"
+title = "Configured Server"
 cwd = "{cwd}"
 instructions = "prefer scoped test runs"
 list-ttl-ms = 1234
@@ -653,6 +655,10 @@ timeoutMs = 2000
         )
         .await;
     assert_eq!(initialized["result"]["serverInfo"]["name"], "configured");
+    assert_eq!(
+        initialized["result"]["serverInfo"]["title"],
+        "Configured Server"
+    );
     assert_eq!(
         initialized["result"]["instructions"],
         "prefer scoped test runs"
