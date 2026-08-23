@@ -20,7 +20,7 @@ use mcpd::tool::exec_tool::ExecTool;
 use mcpd::tool::registry::StaticRegistry;
 use mcpd::tool::{ToolHandler, source};
 use mcpd::transport::auth::{Anonymous, Authenticator, BearerToken};
-use mcpd::transport::handler::{HTTP_VERSIONS, McpdHandler, STDIO_VERSIONS};
+use mcpd::transport::handler::McpdHandler;
 use mcpd::transport::{server, shutdown_signal, stdio};
 
 /// The runtime is built here rather than by `#[tokio::main]` so it can be left
@@ -78,10 +78,6 @@ async fn serve() -> Result<()> {
         server_info,
         instructions,
         list_ttl_ms,
-        protocol_versions: match transport {
-            Transport::Stdio => STDIO_VERSIONS,
-            Transport::Http(_) => HTTP_VERSIONS,
-        },
     };
 
     let shutdown = CancellationToken::new();

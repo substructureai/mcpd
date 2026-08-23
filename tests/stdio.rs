@@ -176,40 +176,29 @@ fn stdio_asks_for_no_token_and_no_waiver() {
 }
 
 #[test]
-fn stdio_negotiates_the_revision_an_older_client_asks_for() {
+fn an_older_revision_is_answered_with_the_only_one_served() {
     let dir = TempDir::new().unwrap();
     let mut daemon = piped(dir.path());
 
     let initialized = daemon.initialize("2025-06-18");
 
-    assert_eq!(initialized["result"]["protocolVersion"], "2025-06-18");
-    assert_eq!(
-        text(&daemon.call("sh", json!({ "command": "echo hi" }))),
-        "hi\n"
-    );
+    assert_eq!(initialized["result"]["protocolVersion"], PROTOCOL);
 }
 
-/// The tools/list cache hints arrived with 2026-07-28. A client that
-/// negotiated an older revision is not sent fields its revision never defined.
 #[test]
-fn the_cache_hints_are_offered_only_to_the_revision_that_defines_them() {
+fn the_cache_hints_come_with_the_revision_that_defines_them() {
     let dir = TempDir::new().unwrap();
+    let mut daemon = piped(dir.path());
 
-    let mut old = piped(dir.path());
-    old.initialize("2025-06-18");
-    let listed = old.rpc(2, "tools/list", json!({}));
-    assert!(listed["result"].get("ttlMs").is_none(), "{listed}");
-    assert!(listed["result"].get("cacheScope").is_none(), "{listed}");
+    daemon.initialize(PROTOCOL);
 
-    let mut current = piped(dir.path());
-    current.initialize(PROTOCOL);
-    let listed = current.rpc(2, "tools/list", json!({}));
+    let listed = daemon.rpc(2, "tools/list", json!({}));
     assert_eq!(listed["result"]["ttlMs"], 60_000);
     assert_eq!(listed["result"]["cacheScope"], "public");
 }
 
 #[test]
-fn a_version_nobody_recognises_falls_back_to_the_newest_served() {
+fn a_version_nobody_recognises_falls_back_to_the_one_served() {
     let dir = TempDir::new().unwrap();
     let mut daemon = piped(dir.path());
 
