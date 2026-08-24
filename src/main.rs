@@ -23,9 +23,6 @@ use mcpd::transport::auth::{Anonymous, Authenticator, BearerToken};
 use mcpd::transport::handler::McpdHandler;
 use mcpd::transport::{server, shutdown_signal, stdio};
 
-/// The runtime is built here rather than by `#[tokio::main]` so it can be left
-/// behind instead of dropped. Dropping it waits for the blocking pool, and
-/// `tokio::io::stdin` parks a read there that no signal can cancel.
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -33,7 +30,6 @@ fn main() -> Result<()> {
 
     let served = runtime.block_on(serve());
     runtime.shutdown_background();
-
     served
 }
 

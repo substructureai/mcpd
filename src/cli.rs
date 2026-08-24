@@ -14,9 +14,6 @@ const DEFAULT_NAME: &str = "mcpd";
 const DEFAULT_MCP_PATH: &str = "/mcp";
 const DEFAULT_LIST_TTL_MS: u64 = 60_000;
 
-/// Both sources of configuration, so a config file cannot drift from the flags:
-/// one key per flag, spelled the same. Every field is optional because
-/// absent has to stay distinguishable from default until the two are merged.
 #[derive(Parser, Serialize, Deserialize, Debug, Default)]
 #[command(
     name = "mcpd",
