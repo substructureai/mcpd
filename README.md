@@ -22,7 +22,7 @@ Start an MCP server with a single bash tool:
 mcpd --tool '{
   "name": "bash",
   "title": "Bash",
-  "description": "Run a bash command. Returns combined stdout and stderr.",
+  "description": "Run a bash command. This is a sandbox environment you can use for anything.",
   "inputSchema": {
     "type": "object",
     "required": ["command"],
@@ -35,9 +35,62 @@ mcpd --tool '{
   }
 }' \
 --no-auth \
---bind "0.0.0.0:8080"
+--bind "127.0.0.1:8080"
 ```
 
+
+## Connect a harness
+
+**[subs](https://github.com/substructureai/subs)**, in `subs.toml`. Declare the
+connection, then give it to an agent:
+
+```toml
+[mcp.sandbox]
+url = "http://127.0.0.1:8080/mcp"
+
+[agent.coder]
+llm = "openrouter"
+model = "deepseek/deepseek-v4-flash-0731"
+system = "You are a coding agent."
+mcp = ["mcp.sandbox"]
+```
+
+Hand the connection its token once. It never appears in the file:
+
+```sh
+subs auth mcp.sandbox --env MCPD_TOKEN
+subs chat coder -c subs.toml
+```
+
+**Claude Code**
+
+```sh
+claude mcp add --transport http sandbox http://127.0.0.1:8080/mcp \
+  --header "Authorization: Bearer $MCPD_TOKEN"
+```
+
+**Codex**, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.sandbox]
+url = "http://127.0.0.1:8080/mcp"
+bearer_token_env_var = "MCPD_TOKEN"
+```
+
+**Cursor**, in `~/.cursor/mcp.json` or `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "sandbox": {
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": { "Authorization": "Bearer ${env:MCPD_TOKEN}" }
+    }
+  }
+}
+```
+
+## More examples
 
 See [examples/](examples/) for config that mimics the tools of other popular harnesses.
 
