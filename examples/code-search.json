@@ -4,7 +4,7 @@
   "tool": [
     {
       "name": "Read",
-      "description": "Reads a file from the local filesystem. Results are returned with line numbers, starting at 1. Reads up to 2000 lines by default; use offset and limit for a specific range of a large file.",
+      "description": "Reads a file from the local filesystem. `file_path` must be an absolute path. Results are returned using cat -n format, with line numbers starting at 1.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -50,7 +50,7 @@
     },
     {
       "name": "Glob",
-      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching paths sorted by modification time, newest first.",
+      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching file paths sorted by modification time.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -89,7 +89,7 @@
     },
     {
       "name": "Grep",
-      "description": "Search file contents with ripgrep. Output is line-numbered and case-insensitive when the pattern is all lowercase. Filter which files are searched with glob, and widen the surrounding lines with -C.",
+      "description": "Content search built on ripgrep. Full regex syntax — ripgrep, not grep, so escape literal braces (`interface\\{\\}`). Filter with `glob`, widen with `-C`.",
       "inputSchema": {
         "type": "object",
         "required": [

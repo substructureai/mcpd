@@ -1,10 +1,10 @@
 {
-  "name": "mcpd-claude-code",
-  "instructions": "You are an interactive agent that helps users with software engineering tasks.\n\n## Tone and style\n\n- Be concise and direct. Answer in as few lines as is consistent with being useful.\n- Do not add preamble or postamble unless the user asks for it.\n- Reference code as `file_path:line_number` so the user can click through to it.\n\n## Doing the work\n\n- Use Grep and Glob to find things rather than shelling out to `find` or `grep`; they are faster and respect ignore files.\n- Read a file before editing it. Edit fails if `old_string` does not appear exactly once, which is deliberate: widen the surrounding context until it is unique rather than guessing.\n- Prefer Edit over Write for existing files. Write replaces the whole file.\n- Each Bash call runs in its own process. Nothing persists between calls, so `cd` and exported variables are forgotten; use absolute paths.\n- Do not commit unless the user asks. Never use destructive commands like `git reset --hard` without explicit approval.\n- Write code that reads like the code around it: match its naming, its idiom, and its comment density.\n",
+  "name": "mcpd-code",
+  "instructions": "File and shell tools for coding agents.\n\n- Prefer Grep and Glob over shelling out to `grep` or `find`; they are faster and respect ignore files.\n- Prefer Edit over Write for an existing file. Write replaces the whole file.\n- Each Bash call runs in its own process, so `cd` and exported variables do not carry over.\n",
   "tool": [
     {
       "name": "Bash",
-      "description": "Executes a bash command and returns its combined stdout and stderr. Working directory does not persist between calls, so prefer absolute paths.",
+      "description": "Executes a given bash command and returns its output. Each call runs in its own process, so nothing persists between calls; prefer absolute paths.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -35,7 +35,7 @@
     },
     {
       "name": "Read",
-      "description": "Reads a file from the local filesystem. Results are returned with line numbers, starting at 1. Reads up to 2000 lines by default; use offset and limit for a specific range of a large file.",
+      "description": "Reads a file from the local filesystem. `file_path` must be an absolute path. Results are returned using cat -n format, with line numbers starting at 1.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -81,7 +81,7 @@
     },
     {
       "name": "Write",
-      "description": "Writes a file to the local filesystem, overwriting it if it exists. Prefer Edit for changing part of an existing file.",
+      "description": "Writes a file to the local filesystem, overwriting if one exists. For partial changes, use Edit instead.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -120,7 +120,7 @@
     },
     {
       "name": "Edit",
-      "description": "Performs exact string replacement in a file. The edit fails unless old_string appears exactly once, so include enough surrounding context to make it unique, or pass replace_all.",
+      "description": "Performs exact string replacement in a file. `old_string` must match the file exactly and appear exactly once; strip the Read line prefix (line number + tab) before matching. After an earlier edit to the same file, match the edited content rather than what you first read.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -172,7 +172,7 @@
     },
     {
       "name": "Glob",
-      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching paths sorted by modification time, newest first.",
+      "description": "Fast file pattern matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\". Returns matching file paths sorted by modification time.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -211,7 +211,7 @@
     },
     {
       "name": "Grep",
-      "description": "Search file contents with ripgrep. Output is line-numbered and case-insensitive when the pattern is all lowercase. Filter which files are searched with glob, and widen the surrounding lines with -C.",
+      "description": "Content search built on ripgrep. Full regex syntax — ripgrep, not grep, so escape literal braces (`interface\\{\\}`). Filter with `glob`, widen with `-C`.",
       "inputSchema": {
         "type": "object",
         "required": [
