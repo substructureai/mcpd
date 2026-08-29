@@ -94,3 +94,7 @@ bearer_token_env_var = "MCPD_TOKEN"
 
 See [examples/](examples/) for config that mimics the tools of other popular harnesses.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
