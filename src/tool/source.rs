@@ -209,6 +209,26 @@ mod tests {
             parse(stdin),
             Err(LoadError::OptionalParam { param, .. }) if param == "content"
         ));
+
+        let lock = r#"{
+            "name": "t",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "file_path": { "type": "string" } }
+            },
+            "_meta": {
+                "dev.subs/exec": { "argv": ["edit"], "lock": ["{file_path}"] }
+            }
+        }"#;
+        assert!(matches!(
+            parse(lock),
+            Err(LoadError::OptionalParam { param, .. }) if param == "file_path"
+        ));
+    }
+
+    #[test]
+    fn a_definition_without_a_lock_holds_no_keys() {
+        assert!(parse(BASH).unwrap().exec.lock.is_empty());
     }
 
     #[test]

@@ -7,20 +7,28 @@ use async_trait::async_trait;
 use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool};
 
 use crate::exec::{ExecOutput, ExecSpec, Executor, Exit, SIGNAL_EXIT_CODE_BASE, TIMEOUT_EXIT_CODE};
+use crate::tool::lock::Locks;
 use crate::tool::{ToolDef, ToolError, ToolHandler, substitute};
 
 pub struct ExecTool {
     def: ToolDef,
     executor: Arc<dyn Executor>,
     default_cwd: PathBuf,
+    locks: Arc<Locks>,
 }
 
 impl ExecTool {
-    pub fn new(def: ToolDef, executor: Arc<dyn Executor>, default_cwd: PathBuf) -> Self {
+    pub fn new(
+        def: ToolDef,
+        executor: Arc<dyn Executor>,
+        default_cwd: PathBuf,
+        locks: Arc<Locks>,
+    ) -> Self {
         Self {
             def,
             executor,
             default_cwd,
+            locks,
         }
     }
 
@@ -56,9 +64,18 @@ impl ToolHandler for ExecTool {
         // An array parameter spliced into argv can be empty, which would leave
         // nothing to run. Caught here rather than left to the executor.
         let argv = substitute::argv(&self.def.exec.argv, &arguments, params)?;
+
         if argv.is_empty() {
             return Err(ToolError::EmptyArgv);
         }
+
+        let keys = self
+            .def
+            .exec
+            .lock
+            .iter()
+            .map(|template| substitute::text(template, &arguments, params))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let spec = ExecSpec {
             argv,
@@ -74,15 +91,13 @@ impl ToolHandler for ExecTool {
             max_output_bytes: self.def.exec.max_output_bytes,
         };
 
+        let _held = self.locks.acquire(&keys).await;
+
         let timeout = spec.timeout;
         Ok(render(self.executor.run(spec).await?, timeout))
     }
 }
 
-/// `isError` means the tool failed, not that the command exited non-zero.
-/// `npm test` returning 1 is a successful call reporting a test failure, and a
-/// command killed by a signal is likewise a report. Only a timeout is a failure
-/// of the tool itself, and even then the output collected first is kept.
 fn render(output: ExecOutput, timeout: Duration) -> CallToolResult {
     let exit = output.exit;
 
@@ -148,12 +163,43 @@ fn signal_name(signal: i32) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use serde_json::json;
 
     use super::*;
     use crate::exec::ExecError;
     use crate::tool::source::parse;
+
+    #[derive(Default)]
+    struct Tracker {
+        inside: AtomicUsize,
+        peak: AtomicUsize,
+    }
+
+    impl Tracker {
+        fn peak(&self) -> usize {
+            self.peak.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl Executor for Tracker {
+        async fn run(&self, _spec: ExecSpec) -> Result<ExecOutput, ExecError> {
+            let now = self.inside.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            self.inside.fetch_sub(1, Ordering::SeqCst);
+
+            Ok(ExecOutput {
+                output: String::new(),
+                truncated: false,
+                exit: Exit::Code(0),
+            })
+        }
+
+        async fn shutdown(&self) {}
+    }
 
     struct Fake {
         seen: Mutex<Option<ExecSpec>>,
@@ -216,7 +262,16 @@ mod tests {
     }"#;
 
     fn tool(json: &str, executor: Arc<dyn Executor>) -> ExecTool {
-        ExecTool::new(parse(json).unwrap(), executor, PathBuf::from("/daemon"))
+        locked(json, executor, Arc::new(Locks::new()))
+    }
+
+    fn locked(json: &str, executor: Arc<dyn Executor>, locks: Arc<Locks>) -> ExecTool {
+        ExecTool::new(
+            parse(json).unwrap(),
+            executor,
+            PathBuf::from("/daemon"),
+            locks,
+        )
     }
 
     fn args(value: serde_json::Value) -> Option<JsonObject> {
@@ -434,5 +489,92 @@ mod tests {
 
         assert_eq!(fake.spec().timeout, Duration::from_millis(1500));
         assert_eq!(fake.spec().max_output_bytes, 64);
+    }
+
+    const EDIT: &str = r#"{
+        "name": "edit",
+        "inputSchema": {
+            "type": "object",
+            "properties": { "file_path": { "type": "string" } },
+            "required": ["file_path"]
+        },
+        "_meta": {
+            "dev.subs/exec": {
+                "argv": ["edit", "{file_path}"],
+                "lock": ["{file_path}"]
+            }
+        }
+    }"#;
+
+    const WRITE: &str = r#"{
+        "name": "write",
+        "inputSchema": {
+            "type": "object",
+            "properties": { "file_path": { "type": "string" } },
+            "required": ["file_path"]
+        },
+        "_meta": {
+            "dev.subs/exec": {
+                "argv": ["write", "{file_path}"],
+                "lock": ["{file_path}"]
+            }
+        }
+    }"#;
+
+    async fn peak_of(tools: [(&str, &str); 2]) -> usize {
+        let tracker = Arc::new(Tracker::default());
+        let locks = Arc::new(Locks::new());
+
+        let [(first, one), (second, two)] = tools;
+        let a = locked(first, tracker.clone(), locks.clone());
+        let b = locked(second, tracker.clone(), locks.clone());
+
+        tokio::join!(
+            async { a.call(args(json!({ "file_path": one }))).await.unwrap() },
+            async { b.call(args(json!({ "file_path": two }))).await.unwrap() },
+        );
+
+        tracker.peak()
+    }
+
+    #[tokio::test]
+    async fn two_calls_naming_one_key_do_not_overlap() {
+        assert_eq!(peak_of([(EDIT, "/f"), (EDIT, "/f")]).await, 1);
+    }
+
+    #[tokio::test]
+    async fn two_calls_naming_different_keys_overlap() {
+        assert_eq!(peak_of([(EDIT, "/one"), (EDIT, "/two")]).await, 2);
+    }
+
+    #[tokio::test]
+    async fn different_tools_naming_one_key_do_not_overlap() {
+        assert_eq!(peak_of([(EDIT, "/f"), (WRITE, "/f")]).await, 1);
+    }
+
+    #[tokio::test]
+    async fn a_tool_naming_no_key_never_waits() {
+        let unlocked = r#"{
+            "name": "edit",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "file_path": { "type": "string" } },
+                "required": ["file_path"]
+            },
+            "_meta": { "dev.subs/exec": { "argv": ["edit", "{file_path}"] } }
+        }"#;
+
+        assert_eq!(peak_of([(unlocked, "/f"), (unlocked, "/f")]).await, 2);
+    }
+
+    #[tokio::test]
+    async fn a_lock_key_is_substituted_from_the_arguments() {
+        let fake = Arc::new(Fake::new());
+        tool(EDIT, fake.clone())
+            .call(args(json!({ "file_path": "/a/b.rs" })))
+            .await
+            .unwrap();
+
+        assert_eq!(fake.spec().argv, ["edit", "/a/b.rs"]);
     }
 }

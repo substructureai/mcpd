@@ -9,7 +9,7 @@ use crate::transport::server::HEALTH_PATH;
 
 pub const TOKEN_ENV: &str = "MCPD_TOKEN";
 
-const DEFAULT_BIND: &str = "0.0.0.0:8080";
+const DEFAULT_BIND: &str = "127.0.0.1:8080";
 const DEFAULT_NAME: &str = "mcpd";
 const DEFAULT_MCP_PATH: &str = "/mcp";
 const DEFAULT_LIST_TTL_MS: u64 = 60_000;
@@ -48,7 +48,7 @@ pub struct Cli {
     #[arg(
         long,
         value_name = "ADDR",
-        help = "Listen address [default: 0.0.0.0:8080]"
+        help = "Listen address [default: 127.0.0.1:8080]"
     )]
     pub bind: Option<String>,
 
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn defaults_apply_when_neither_source_says_otherwise() {
         let settings = settled(flags(&[]));
-        assert_eq!(settings.bind, "0.0.0.0:8080");
+        assert_eq!(settings.bind, "127.0.0.1:8080");
         assert_eq!(settings.name, "mcpd");
         assert_eq!(settings.list_ttl_ms, 60_000);
         assert!(settings.cwd.is_none());

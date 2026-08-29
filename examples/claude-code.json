@@ -110,6 +110,9 @@
             "status=none"
           ],
           "stdin": "{content}",
+          "lock": [
+            "{file_path}"
+          ],
           "timeoutMs": 15000,
           "maxOutputBytes": 1000
         }
@@ -157,6 +160,9 @@
             "{old_string}",
             "{new_string}",
             "{replace_all}",
+            "{file_path}"
+          ],
+          "lock": [
             "{file_path}"
           ],
           "timeoutMs": 15000,

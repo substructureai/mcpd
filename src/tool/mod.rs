@@ -1,4 +1,5 @@
 pub mod exec_tool;
+pub mod lock;
 pub mod registry;
 pub mod schema;
 pub mod source;
@@ -30,6 +31,8 @@ pub struct ExecMeta {
     pub stdin: Option<String>,
     #[serde(default = "default_max_output_bytes")]
     pub max_output_bytes: usize,
+    #[serde(default)]
+    pub lock: Vec<String>,
 }
 
 impl ExecMeta {
@@ -39,6 +42,7 @@ impl ExecMeta {
             .map(String::as_str)
             .chain(self.cwd.as_deref())
             .chain(self.stdin.as_deref())
+            .chain(self.lock.iter().map(String::as_str))
     }
 }
 

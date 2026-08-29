@@ -17,6 +17,7 @@ use mcpd::cli::{
 use mcpd::exec::Executor;
 use mcpd::exec::process::ProcessExecutor;
 use mcpd::tool::exec_tool::ExecTool;
+use mcpd::tool::lock::Locks;
 use mcpd::tool::registry::StaticRegistry;
 use mcpd::tool::{ToolHandler, source};
 use mcpd::transport::auth::{Anonymous, Authenticator, BearerToken};
@@ -54,10 +55,16 @@ async fn serve() -> Result<()> {
 
     let defs = source::load(&tools)?;
     let count = defs.len();
+    let locks = Arc::new(Locks::new());
     let handlers = defs
         .into_iter()
         .map(|def| {
-            Arc::new(ExecTool::new(def, executor.clone(), cwd.clone())) as Arc<dyn ToolHandler>
+            Arc::new(ExecTool::new(
+                def,
+                executor.clone(),
+                cwd.clone(),
+                locks.clone(),
+            )) as Arc<dyn ToolHandler>
         })
         .collect();
 
