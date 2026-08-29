@@ -44,6 +44,10 @@ mcpd --tool '{
 **[subs](https://github.com/substructureai/subs)**, in `subs.toml`. Declare the
 connection, then give it to an agent:
 
+```sh
+curl -fsSL https://subs.dev/cli.sh | bash
+```
+
 ```toml
 [mcp.sandbox]
 url = "http://127.0.0.1:8080/mcp"
@@ -58,7 +62,7 @@ mcp = ["mcp.sandbox"]
 Hand the connection its token once. It never appears in the file:
 
 ```sh
-subs auth mcp.sandbox --env MCPD_TOKEN
+subs auth mcp.sandbox
 subs chat coder -c subs.toml
 ```
 
